@@ -112,6 +112,10 @@ class SessionAuthenticationHandler implements AuthenticationHandler
     public function logOut(HTTPRequest $request = null)
     {
         $request = $request ?: Controller::curr()->getRequest();
-        $request->getSession()->restart($request);
+        $request->getSession()->destroy(true, $request);
+
+        if (Member::config()->get('login_marker_cookie')) {
+            Cookie::force_expiry(Member::config()->get('login_marker_cookie'));
+        }
     }
 }

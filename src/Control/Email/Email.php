@@ -2,6 +2,10 @@
 
 namespace SilverStripe\Control\Email;
 
+use DateTime;
+use RuntimeException;
+use Egulias\EmailValidator\EmailValidator;
+use Egulias\EmailValidator\Validation\RFCValidation;
 use SilverStripe\Control\Director;
 use SilverStripe\Control\HTTP;
 use SilverStripe\Core\Convert;
@@ -22,7 +26,6 @@ use Swift_MimePart;
  */
 class Email extends ViewableData
 {
-
     /**
      * @var array
      * @config
@@ -99,7 +102,8 @@ class Email extends ViewableData
      */
     public static function is_valid_address($address)
     {
-        return \Swift_Validate::email($address);
+        $validator = new EmailValidator();
+        return $validator->isValid($address, new RFCValidation());
     }
 
     /**
@@ -269,13 +273,42 @@ class Email extends ViewableData
      */
     public function setSwiftMessage($swiftMessage)
     {
-        $swiftMessage->setDate(DBDatetime::now()->getTimestamp());
-        if (!$swiftMessage->getFrom() && ($defaultFrom = $this->config()->get('admin_email'))) {
-            $swiftMessage->setFrom($defaultFrom);
+        $dateTime = new DateTime();
+        $dateTime->setTimestamp(DBDatetime::now()->getTimestamp());
+        $swiftMessage->setDate($dateTime);
+        if (!$swiftMessage->getFrom()) {
+            $swiftMessage->setFrom($this->getDefaultFrom());
         }
         $this->swiftMessage = $swiftMessage;
 
         return $this;
+    }
+
+    /**
+     * @return string
+     */
+    private function getDefaultFrom(): string
+    {
+        // admin_email can have a string or an array config
+        // https://docs.silverstripe.org/en/4/developer_guides/email/#administrator-emails
+        $adminEmail = $this->config()->get('admin_email');
+        if (is_array($adminEmail) && count($adminEmail) > 0) {
+            $defaultFrom = array_keys($adminEmail)[0];
+        } else {
+            if (is_string($adminEmail)) {
+                $defaultFrom = $adminEmail;
+            } else {
+                $defaultFrom = '';
+            }
+        }
+        if (empty($defaultFrom)) {
+            $host = Director::host();
+            if (empty($host)) {
+                throw new RuntimeException('Host not defined');
+            }
+            $defaultFrom = sprintf('no-reply@%s', $host);
+        }
+        return $defaultFrom;
     }
 
     /**
@@ -288,11 +321,24 @@ class Email extends ViewableData
 
     /**
      * @param string|array $address
+     * @return string|array
+     */
+    private function sanitiseAddress($address)
+    {
+        if (is_array($address)) {
+            return array_map('trim', $address);
+        }
+        return trim($address);
+    }
+
+    /**
+     * @param string|array $address
      * @param string|null $name
      * @return $this
      */
     public function setFrom($address, $name = null)
     {
+        $address = $this->sanitiseAddress($address);
         $this->getSwiftMessage()->setFrom($address, $name);
 
         return $this;
@@ -305,6 +351,7 @@ class Email extends ViewableData
      */
     public function addFrom($address, $name = null)
     {
+        $address = $this->sanitiseAddress($address);
         $this->getSwiftMessage()->addFrom($address, $name);
 
         return $this;
@@ -325,6 +372,7 @@ class Email extends ViewableData
      */
     public function setSender($address, $name = null)
     {
+        $address = $this->sanitiseAddress($address);
         $this->getSwiftMessage()->setSender($address, $name);
 
         return $this;
@@ -346,6 +394,7 @@ class Email extends ViewableData
      */
     public function setReturnPath($address)
     {
+        $address = $this->sanitiseAddress($address);
         $this->getSwiftMessage()->setReturnPath($address);
         return $this;
     }
@@ -370,6 +419,7 @@ class Email extends ViewableData
      */
     public function setTo($address, $name = null)
     {
+        $address = $this->sanitiseAddress($address);
         $this->getSwiftMessage()->setTo($address, $name);
 
         return $this;
@@ -382,6 +432,7 @@ class Email extends ViewableData
      */
     public function addTo($address, $name = null)
     {
+        $address = $this->sanitiseAddress($address);
         $this->getSwiftMessage()->addTo($address, $name);
 
         return $this;
@@ -402,6 +453,7 @@ class Email extends ViewableData
      */
     public function setCC($address, $name = null)
     {
+        $address = $this->sanitiseAddress($address);
         $this->getSwiftMessage()->setCc($address, $name);
 
         return $this;
@@ -414,6 +466,7 @@ class Email extends ViewableData
      */
     public function addCC($address, $name = null)
     {
+        $address = $this->sanitiseAddress($address);
         $this->getSwiftMessage()->addCc($address, $name);
 
         return $this;
@@ -434,6 +487,7 @@ class Email extends ViewableData
      */
     public function setBCC($address, $name = null)
     {
+        $address = $this->sanitiseAddress($address);
         $this->getSwiftMessage()->setBcc($address, $name);
 
         return $this;
@@ -446,11 +500,15 @@ class Email extends ViewableData
      */
     public function addBCC($address, $name = null)
     {
+        $address = $this->sanitiseAddress($address);
         $this->getSwiftMessage()->addBcc($address, $name);
 
         return $this;
     }
 
+    /**
+     * @return mixed
+     */
     public function getReplyTo()
     {
         return $this->getSwiftMessage()->getReplyTo();
@@ -463,6 +521,7 @@ class Email extends ViewableData
      */
     public function setReplyTo($address, $name = null)
     {
+        $address = $this->sanitiseAddress($address);
         $this->getSwiftMessage()->setReplyTo($address, $name);
 
         return $this;
@@ -475,6 +534,7 @@ class Email extends ViewableData
      */
     public function addReplyTo($address, $name = null)
     {
+        $address = $this->sanitiseAddress($address);
         $this->getSwiftMessage()->addReplyTo($address, $name);
 
         return $this;
@@ -610,7 +670,7 @@ class Email extends ViewableData
         }
 
         $this->invalidateBody();
-        
+
         return $this;
     }
 
